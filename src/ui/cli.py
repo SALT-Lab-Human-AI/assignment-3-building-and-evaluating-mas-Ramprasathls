@@ -116,8 +116,8 @@ class CLI:
                 print("=" * 70)
                 
                 try:
-                    # Process through orchestrator (synchronous call, not async)
-                    result = self.orchestrator.process_query(query)
+                    # Process through orchestrator (now async)
+                    result = await self.orchestrator.process_query(query)
                     self.query_count += 1
                     
                     # Display result
@@ -125,6 +125,7 @@ class CLI:
                     
                 except Exception as e:
                     print(f"\nError processing query: {e}")
+                    logging.exception("Error processing query")
                     logging.exception("Error processing query")
 
             except KeyboardInterrupt:
@@ -177,37 +178,61 @@ class CLI:
         print("RESPONSE")
         print("=" * 70)
 
+        # Check for safety blocks
+        metadata = result.get("metadata", {})
+        if metadata.get("blocked"):
+            print("\n" + "!" * 70)
+            print("SAFETY ALERT: Query was blocked")
+            print("!" * 70)
+            violations = metadata.get("safety_violations", [])
+            for v in violations:
+                print(f"  - {v.get('validator', 'unknown')}: {v.get('reason', '')}")
+            print(f"\nResponse: {result.get('response', '')}")
+            print("=" * 70 + "\n")
+            return
+
         # Check for errors
         if "error" in result:
-            print(f"\n❌ Error: {result['error']}")
+            print(f"\nError: {result['error']}")
             return
 
         # Display response
         response = result.get("response", "")
         print(f"\n{response}\n")
 
+        # Display agent traces (always show for transparency)
+        conversation = result.get("conversation_history", [])
+        if conversation:
+            print("\n" + "-" * 70)
+            print("AGENT TRACES")
+            print("-" * 70)
+            for msg in conversation:
+                agent = msg.get("source", "Unknown")
+                content = msg.get("content", "")
+                preview = content[:200] + "..." if len(content) > 200 else content
+                preview = preview.replace("\n", " ")
+                print(f"\n[{agent}]:")
+                print(f"  {preview}")
+
         # Extract and display citations from conversation
         citations = self._extract_citations(result)
         if citations:
             print("\n" + "-" * 70)
-            print("📚 CITATIONS")
+            print("CITATIONS & SOURCES")
             print("-" * 70)
             for i, citation in enumerate(citations, 1):
                 print(f"[{i}] {citation}")
 
         # Display metadata
-        metadata = result.get("metadata", {})
         if metadata:
             print("\n" + "-" * 70)
-            print("📊 METADATA")
+            print("METADATA")
             print("-" * 70)
-            print(f"  • Messages exchanged: {metadata.get('num_messages', 0)}")
-            print(f"  • Sources gathered: {metadata.get('num_sources', 0)}")
-            print(f"  • Agents involved: {', '.join(metadata.get('agents_involved', []))}")
-
-        # Display conversation summary if verbose mode
-        if self._should_show_traces():
-            self._display_conversation_summary(result.get("conversation_history", []))
+            print(f"  Messages: {metadata.get('num_messages', 0)}")
+            print(f"  Sources: {metadata.get('num_sources', 0)}")
+            if metadata.get('safety_check'):
+                safety = metadata['safety_check']
+                print(f"  Safety Check: {'PASSED' if safety.get('passed') else 'FLAGGED'}")
 
         print("=" * 70 + "\n")
     

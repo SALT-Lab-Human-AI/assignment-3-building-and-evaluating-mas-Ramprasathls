@@ -13,11 +13,17 @@ Workflow:
 
 import logging
 import asyncio
+import time
 from typing import Dict, Any, List, Optional
 from autogen_agentchat.teams import RoundRobinGroupChat
 from autogen_agentchat.messages import TextMessage
 
 from src.agents.autogen_agents import create_research_team
+from src.guardrails.safety_manager import SafetyManager
+
+# Retry configuration for API failures
+MAX_RETRIES = 3
+RETRY_DELAY = 2  # seconds
 
 
 class AutoGenOrchestrator:
@@ -39,6 +45,11 @@ class AutoGenOrchestrator:
         self.config = config
         self.logger = logging.getLogger("autogen_orchestrator")
         
+        # Initialize safety manager
+        safety_config = config.get("safety", {})
+        self.safety_manager = SafetyManager(safety_config)
+        self.logger.info("Safety manager initialized")
+        
         # Create the research team
         self.logger.info("Creating research team...")
         self.team = create_research_team(config)
@@ -48,7 +59,7 @@ class AutoGenOrchestrator:
         # Workflow trace for debugging and UI display
         self.workflow_trace: List[Dict[str, Any]] = []
 
-    def process_query(self, query: str, max_rounds: int = 20) -> Dict[str, Any]:
+    async def process_query(self, query: str, max_rounds: int = 20) -> Dict[str, Any]:
         """
         Process a research query through the multi-agent system.
 
@@ -65,32 +76,67 @@ class AutoGenOrchestrator:
         """
         self.logger.info(f"Processing query: {query}")
         
-        try:
-            # Run the async query processing
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # If we're already in an async context, create a new loop
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    result = pool.submit(
-                        asyncio.run, 
-                        self._process_query_async(query, max_rounds)
-                    ).result()
-            else:
-                result = loop.run_until_complete(self._process_query_async(query, max_rounds))
-            
-            self.logger.info("Query processing complete")
-            return result
-            
-        except Exception as e:
-            self.logger.error(f"Error processing query: {e}", exc_info=True)
+        # Check input safety first
+        safety_result = self.safety_manager.check_input_safety(query)
+        if not safety_result.get("safe", True):
+            self.logger.warning(f"Query blocked by safety check: {safety_result}")
             return {
                 "query": query,
-                "error": str(e),
-                "response": f"An error occurred while processing your query: {str(e)}",
+                "response": safety_result.get("message", "Query blocked due to safety policies."),
                 "conversation_history": [],
-                "metadata": {"error": True}
+                "metadata": {
+                    "blocked": True,
+                    "safety_violations": safety_result.get("violations", [])
+                }
             }
+        
+        # Retry loop for handling transient API failures
+        for attempt in range(MAX_RETRIES):
+            try:
+                # Try to get event loop, handle both sync and async contexts
+                try:
+                    loop = asyncio.get_running_loop()
+                    # We're in an async context - need to run directly
+                    # Create a new team to avoid event loop conflicts
+                    self.team = create_research_team(self.config)
+                    result = await self._process_query_async(query, max_rounds)
+                except RuntimeError:
+                    # No running loop - use asyncio.run
+                    result = asyncio.run(self._process_query_async(query, max_rounds))
+                
+                # Check output safety before returning
+                response_text = result.get("response", "")
+                output_safety = self.safety_manager.check_output_safety(response_text)
+                if output_safety.get("violations"):
+                    result["metadata"]["safety_check"] = {
+                        "passed": output_safety.get("safe", True),
+                        "violations": output_safety.get("violations", [])
+                    }
+                    # Use sanitized response if available
+                    result["response"] = output_safety.get("response", response_text)
+                
+                self.logger.info("Query processing complete")
+                return result
+                
+            except Exception as e:
+                error_str = str(e).lower()
+                # Check if rate limited - retry with backoff
+                if "rate" in error_str or "429" in error_str or "limit" in error_str:
+                    if attempt < MAX_RETRIES - 1:
+                        wait_time = RETRY_DELAY * (attempt + 1)
+                        self.logger.warning(f"Rate limited. Retrying in {wait_time}s... (attempt {attempt + 1}/{MAX_RETRIES})")
+                        await asyncio.sleep(wait_time)
+                        continue
+                
+                # Non-rate-limit error or final attempt
+                self.logger.error(f"Error processing query: {e}", exc_info=True)
+                return {
+                    "query": query,
+                    "error": str(e),
+                    "response": f"An error occurred while processing your query: {str(e)}",
+                    "conversation_history": [],
+                    "metadata": {"error": True}
+                }
     
     async def _process_query_async(self, query: str, max_rounds: int = 20) -> Dict[str, Any]:
         """
@@ -103,21 +149,17 @@ class AutoGenOrchestrator:
         Returns:
             Dictionary containing results
         """
-        # Create task message
-        task_message = f"""Research Query: {query}
+        # Create task message - MINIMAL to stay within Groq 6000 TPM limit
+        task_message = f"""Query: {query}
 
-Please work together to answer this query comprehensively:
-1. Planner: Create a research plan
-2. Researcher: Gather evidence from web and academic sources
-3. Writer: Synthesize findings into a well-cited response
-4. Critic: Evaluate the quality and provide feedback"""
+Research and provide a brief answer with sources."""
         
         # Run the team
         result = await self.team.run(task=task_message)
         
         # Extract conversation history
         messages = []
-        async for message in result.messages:
+        for message in result.messages:
             msg_dict = {
                 "source": message.source,
                 "content": message.content if hasattr(message, 'content') else str(message),

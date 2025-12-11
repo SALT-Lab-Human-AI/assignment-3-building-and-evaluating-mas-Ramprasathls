@@ -104,18 +104,10 @@ def create_planner_agent(config: Dict[str, Any], model_client: OpenAIChatComplet
     agent_config = config.get("agents", {}).get("planner", {})
     
     # Load system prompt from config or use default
-    default_system_message = """You are a Research Planner. Your job is to break down research queries into clear, actionable steps.
+    # MINIMAL prompt to stay within Groq free tier (6000 TPM)
+    default_system_message = """You are a Research Planner. Break down the query into 2-3 search topics. Be brief."""
 
-When given a research query, you should:
-1. Identify the key concepts and topics to investigate
-2. Determine what types of sources would be most valuable (academic papers, web articles, etc.)
-3. Suggest specific search queries for the Researcher
-4. Outline how the findings should be synthesized
-
-Provide your plan in a structured format with numbered steps.
-Be specific about what information to gather and why it's relevant."""
-
-    # Use custom prompt from config if available, otherwise use default
+    # Use custom prompt from config if available
     custom_prompt = agent_config.get("system_prompt", "")
     if custom_prompt and custom_prompt != "You are a task planner. Break down research queries into actionable steps.":
         system_message = custom_prompt
@@ -149,14 +141,8 @@ def create_researcher_agent(config: Dict[str, Any], model_client: OpenAIChatComp
     agent_config = config.get("agents", {}).get("researcher", {})
     
     # Load system prompt from config or use default
-    default_system_message = """You are a Research Assistant. Your job is to gather high-quality information from academic papers and web sources.
-
-You have access to tools for web search and paper search. When conducting research:
-1. Use both web search and paper search for comprehensive coverage
-2. Look for recent, high-quality sources
-3. Extract key findings, quotes, and data
-4. Note all source URLs and citations
-5. Gather evidence that directly addresses the research query"""
+    # MINIMAL prompt to stay within Groq free tier (6000 TPM)
+    default_system_message = """You are a Researcher. Make ONE web_search and ONE paper_search call. Be concise."""
 
     # Use custom prompt from config if available
     custom_prompt = agent_config.get("system_prompt", "")
@@ -204,18 +190,8 @@ def create_writer_agent(config: Dict[str, Any], model_client: OpenAIChatCompleti
     agent_config = config.get("agents", {}).get("writer", {})
     
     # Load system prompt from config or use default
-    default_system_message = """You are a Research Writer. Your job is to synthesize research findings into clear, well-organized responses.
-
-When writing:
-1. Start with an overview/introduction
-2. Present findings in a logical structure
-3. Cite sources inline using [Source: Title/Author]
-4. Synthesize information from multiple sources
-5. Avoid copying text directly - paraphrase and synthesize
-6. Include a references section at the end
-7. Ensure the response directly answers the original query
-
-Format your response professionally with clear headings, paragraphs, in-text citations, and a References section at the end."""
+    # MINIMAL prompt to stay within Groq free tier (6000 TPM)
+    default_system_message = """You are a Writer. Synthesize findings into a brief response with citations. Keep it short."""
 
     # Use custom prompt from config if available
     custom_prompt = agent_config.get("system_prompt", "")
@@ -251,16 +227,8 @@ def create_critic_agent(config: Dict[str, Any], model_client: OpenAIChatCompleti
     agent_config = config.get("agents", {}).get("critic", {})
     
     # Load system prompt from config or use default
-    default_system_message = """You are a Research Critic. Your job is to evaluate the quality and accuracy of research outputs.
-
-Evaluate the research and writing on these criteria:
-1. **Relevance**: Does it answer the original query?
-2. **Evidence Quality**: Are sources credible and well-cited?
-3. **Completeness**: Are all aspects of the query addressed?
-4. **Accuracy**: Are there any factual errors or contradictions?
-5. **Clarity**: Is the writing clear and well-organized?
-
-Provide constructive but thorough feedback. End your evaluation with either "TERMINATE" if approved, or suggest specific improvements."""
+    # MINIMAL prompt to stay within Groq free tier (6000 TPM)
+    default_system_message = """You are a Critic. Evaluate briefly and say TERMINATE if acceptable."""
 
     # Use custom prompt from config if available
     custom_prompt = agent_config.get("system_prompt", "")

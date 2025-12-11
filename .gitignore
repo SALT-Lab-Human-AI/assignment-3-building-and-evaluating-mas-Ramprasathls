@@ -218,3 +218,6 @@ outputs/
 
 # Pre-commit
 .pre-commit-cache/
+
+# Technical report (local only)
+technical report/

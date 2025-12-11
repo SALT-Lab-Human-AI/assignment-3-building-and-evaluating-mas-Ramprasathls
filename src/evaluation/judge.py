@@ -22,7 +22,7 @@ from typing import Dict, Any, List, Optional
 import logging
 import json
 import os
-from groq import Groq
+from openai import OpenAI
 
 
 class LLMJudge:
@@ -55,13 +55,20 @@ class LLMJudge:
         # Each criterion has: name, weight, description
         self.criteria = config.get("evaluation", {}).get("criteria", [])
         
-        # Initialize Groq client (similar to what we tried in Lab 5)
-        api_key = os.getenv("GROQ_API_KEY")
-        if not api_key:
-            self.logger.warning("GROQ_API_KEY not found in environment")
-        self.client = Groq(api_key=api_key) if api_key else None
+        # Initialize client based on provider
+        provider = self.model_config.get("provider", "openai")
+        if provider == "openai":
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                self.logger.warning("OPENAI_API_KEY not found in environment")
+            self.client = OpenAI(api_key=api_key) if api_key else None
+        else:  # groq
+            api_key = os.getenv("GROQ_API_KEY")
+            if not api_key:
+                self.logger.warning("GROQ_API_KEY not found in environment")
+            self.client = OpenAI(api_key=api_key, base_url="https://api.groq.com/openai/v1") if api_key else None
         
-        self.logger.info(f"LLMJudge initialized with {len(self.criteria)} criteria")
+        self.logger.info(f"LLMJudge initialized with {len(self.criteria)} criteria using {provider}")
  
     async def evaluate(
         self,
@@ -231,17 +238,17 @@ Provide your evaluation in the following JSON format:
         Uses model configuration from config.yaml (models.judge section).
         """
         if not self.client:
-            raise ValueError("Groq client not initialized. Check GROQ_API_KEY environment variable.")
+            raise ValueError("OpenAI client not initialized. Check OPENAI_API_KEY environment variable.")
         
         try:
             # Load model settings from config.yaml (models.judge)
             model_name = self.model_config.get("name", "llama-3.1-8b-instant")
             temperature = self.model_config.get("temperature", 0.3)
-            max_tokens = self.model_config.get("max_tokens", 1024)
+            max_tokens = self.model_config.get("max_tokens", 512)
             
-            self.logger.debug(f"Calling Groq API with model: {model_name}")
+            self.logger.debug(f"Calling LLM API with model: {model_name}")
             
-            # Call Groq API (pattern from Lab 5)
+            # Call OpenAI-compatible API
             chat_completion = self.client.chat.completions.create(
                 messages=[
                     {
@@ -264,7 +271,7 @@ Provide your evaluation in the following JSON format:
             return response
             
         except Exception as e:
-            self.logger.error(f"Error calling Groq API: {e}")
+            self.logger.error(f"Error calling LLM API: {e}")
             raise
 
     def _parse_judgment(self, judgment: str) -> tuple:
@@ -282,6 +289,10 @@ Provide your evaluation in the following JSON format:
             if judgment_clean.endswith("```"):
                 judgment_clean = judgment_clean[:-3]
             judgment_clean = judgment_clean.strip()
+            
+            # Remove control characters that cause JSON parsing issues
+            import re
+            judgment_clean = re.sub(r'[\x00-\x1f\x7f-\x9f]', ' ', judgment_clean)
             
             # Parse JSON
             result = json.loads(judgment_clean)

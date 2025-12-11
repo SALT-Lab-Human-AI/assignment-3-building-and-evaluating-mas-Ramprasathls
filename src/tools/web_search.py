@@ -212,33 +212,33 @@ class WebSearchTool:
 
 
 # Synchronous wrapper for use with AutoGen tools
-def web_search(query: str, provider: str = "tavily", max_results: int = 5) -> str:
+def web_search(query: str, provider: str = "tavily", max_results: int = 2) -> str:
     """
     Synchronous wrapper for web search (for AutoGen tool integration).
     
     Args:
         query: Search query
         provider: "tavily" or "brave"
-        max_results: Maximum results to return
+        max_results: Maximum results to return (default 2 for minimal API usage)
         
     Returns:
-        Formatted string with search results
+        Formatted string with search results (minimal output to stay within token limits)
     """
+    # Strictly limit max_results to prevent token overflow (Groq free tier)
+    max_results = min(max_results, 2)
     tool = WebSearchTool(provider=provider, max_results=max_results)
     results = asyncio.run(tool.search(query))
     
     if not results:
         return "No search results found."
     
-    # Format results as readable text
-    output = f"Found {len(results)} web search results for '{query}':\n\n"
+    # Format results as minimal readable text
+    output = f"Found {len(results)} results:\n"
     
     for i, result in enumerate(results, 1):
+        # Truncate snippet to save tokens
+        snippet = result['snippet'][:100] + "..." if len(result['snippet']) > 100 else result['snippet']
         output += f"{i}. {result['title']}\n"
-        output += f"   URL: {result['url']}\n"
-        output += f"   {result['snippet']}\n"
-        if result.get('published_date'):
-            output += f"   Published: {result['published_date']}\n"
-        output += "\n"
+        output += f"   {snippet}\n"
     
     return output

@@ -28,10 +28,11 @@ def run_web():
 
 
 async def run_evaluation():
-    """Run system evaluation."""
+    """Run system evaluation with LLM-as-a-Judge."""
     import yaml
     from dotenv import load_dotenv
     from src.autogen_orchestrator import AutoGenOrchestrator
+    from src.evaluation.evaluator import SystemEvaluator
     
     # Load environment variables
     load_dotenv()
@@ -44,27 +45,37 @@ async def run_evaluation():
     print("Initializing AutoGen orchestrator...")
     orchestrator = AutoGenOrchestrator(config)
     
-    # For now, run a simple test query
-    # TODO: Integrate with SystemEvaluator for full evaluation
+    # Initialize SystemEvaluator with orchestrator
+    print("Initializing SystemEvaluator with LLM-as-a-Judge...")
+    evaluator = SystemEvaluator(config, orchestrator=orchestrator)
+    
     print("\n" + "=" * 70)
-    print("RUNNING TEST QUERY")
+    print("RUNNING LLM-AS-A-JUDGE EVALUATION")
+    print("=" * 70)
+    print("\nThis will evaluate the system on diverse test queries.")
+    print("Each response will be scored by an LLM judge.\n")
+    
+    # Run evaluation on example queries
+    report = await evaluator.evaluate_system("data/example_queries.json")
+    
+    # Display summary
+    print("\n" + "=" * 70)
+    print("EVALUATION RESULTS")
     print("=" * 70)
     
-    test_query = "What are the key principles of accessible user interface design?"
-    print(f"\nQuery: {test_query}\n")
+    summary = report.get("summary", {})
+    scores = report.get("scores", {})
     
-    result = orchestrator.process_query(test_query)
+    print(f"\nTotal Queries: {summary.get('total_queries', 0)}")
+    print(f"Successful: {summary.get('successful', 0)}")
+    print(f"Overall Average Score: {scores.get('overall_average', 0):.3f}")
     
-    print("\n" + "=" * 70)
-    print("RESULTS")
-    print("=" * 70)
-    print(f"\nResponse:\n{result.get('response', 'No response generated')}")
-    print(f"\nMetadata:")
-    print(f"  - Messages: {result.get('metadata', {}).get('num_messages', 0)}")
-    print(f"  - Sources: {result.get('metadata', {}).get('num_sources', 0)}")
+    print(f"\nScores by Criterion:")
+    for criterion, score in scores.get("by_criterion", {}).items():
+        print(f"  {criterion}: {score:.3f}")
     
     print("\n" + "=" * 70)
-    print("Note: Full evaluation with SystemEvaluator can be implemented")
+    print("Detailed results saved to outputs/")
     print("=" * 70)
 
 
