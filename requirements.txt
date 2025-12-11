@@ -35,5 +35,5 @@ black
 # Pre-commit hooks for security and code quality
 pre-commit
 detect-secrets
-gitleaks
+# gitleaks - Not a pip package, install separately: https://github.com/gitleaks/gitleaks#installing
 bandit

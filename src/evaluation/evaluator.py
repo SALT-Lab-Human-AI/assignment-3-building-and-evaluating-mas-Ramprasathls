@@ -135,13 +135,8 @@ class SystemEvaluator:
         # Run through orchestrator if available
         if self.orchestrator:
             try:
-                # Call orchestrator's process_query method
-                # TODO: YOUR CODE HERE
-                # Need to implement this in their orchestrator
-                response_data = self.orchestrator.process_query(query)
-                
-                # If process_query is async, use:
-                # response_data = await self.orchestrator.process_query(query)
+                # Call orchestrator's async process_query method
+                response_data = await self.orchestrator.process_query(query)
                 
             except Exception as e:
                 self.logger.error(f"Error processing query through orchestrator: {e}")
@@ -284,8 +279,20 @@ class SystemEvaluator:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         results_file = output_dir / f"evaluation_{timestamp}.json"
 
-        with open(results_file, 'w') as f:
-            json.dump(report, f, indent=2)
+        # Custom encoder to handle non-serializable objects
+        def safe_serialize(obj):
+            """Convert non-serializable objects to strings."""
+            if isinstance(obj, dict):
+                return {k: safe_serialize(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [safe_serialize(item) for item in obj]
+            elif hasattr(obj, '__dict__'):
+                return str(obj)
+            else:
+                return obj
+
+        with open(results_file, 'w', encoding='utf-8') as f:
+            json.dump(safe_serialize(report), f, indent=2, default=str)
 
         self.logger.info(f"Evaluation results saved to {results_file}")
 

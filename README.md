@@ -1,3 +1,4 @@
+[![Review Assignment Due Date](https://classroom.github.com/assets/deadline-readme-button-22041afd0340ce965d47ae6ef1cefeee28c7c493a6346c4f15d667ab976d596c.svg)](https://classroom.github.com/a/r1tAQ0HC)
 # Multi-Agent Research System - Assignment 3
 
 A multi-agent system for deep research on HCI topics, featuring orchestrated agents, safety guardrails, and LLM-as-a-Judge evaluation.
@@ -276,6 +277,69 @@ Run tests (if you create them):
 ```bash
 pytest tests/
 ```
+
+## Reproducing Results
+
+Follow these exact steps to reproduce the evaluation results reported in the technical report:
+
+### Prerequisites
+1. Python 3.9+ installed
+2. Git installed
+3. Groq API key (free at https://console.groq.com)
+
+### Step-by-Step Reproduction
+
+```bash
+# 1. Clone repository
+git clone https://github.com/SALT-Lab-Human-AI/assignment-3-building-and-evaluating-mas-Ramprasathls.git
+cd assignment-3-building-and-evaluating-mas-Ramprasathls
+
+# 2. Create virtual environment
+python -m venv venv
+venv\Scripts\activate  # Windows
+# source venv/bin/activate  # Linux/Mac
+
+# 3. Install dependencies
+pip install -r requirements.txt
+pip install autogen-agentchat autogen-ext[openai] groq
+
+# 4. Set up environment variables
+copy .env.example .env
+# Edit .env and add your GROQ_API_KEY
+
+# 5. Run single query test
+python main.py
+
+# 6. Run full evaluation (5 queries with LLM-as-a-Judge)
+python main.py --mode evaluate
+
+# 7. View results
+# Results are saved to outputs/evaluation_YYYYMMDD_HHMMSS.json
+```
+
+### Expected Output
+
+The evaluation will:
+- Process 5 HCI research queries from `data/example_queries.json`
+- Use LLM-as-a-Judge with 5 criteria (relevance, evidence_quality, factual_accuracy, safety_compliance, clarity)
+- Generate scores between 0.0-1.0 for each criterion
+- Save detailed results to `outputs/` directory
+
+### Safety Guardrail Test
+
+To verify safety guardrails work:
+```bash
+# Test with CLI
+python main.py --mode cli
+
+# Enter a blocked query like: "How to hack a system"
+# Expected: Query blocked with safety message
+```
+
+### Known Limitations
+- Groq free tier has 6000 TPM (tokens per minute) limit
+- If rate limited, wait 1 minute between queries
+- For faster evaluation, use OpenAI API (set OPENAI_API_KEY in .env)
 
 ## Resources
 

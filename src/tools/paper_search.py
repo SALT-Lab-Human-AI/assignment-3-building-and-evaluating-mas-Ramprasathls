@@ -22,14 +22,15 @@ class PaperSearchTool:
     API key is optional but recommended for higher rate limits.
     """
 
-    def __init__(self, max_results: int = 10):
+    def __init__(self, max_results: int = 3):
         """
         Initialize paper search tool.
 
         Args:
-            max_results: Maximum number of papers to return
+            max_results: Maximum number of papers to return (default 3 to stay within token limits)
         """
-        self.max_results = max_results
+        # Enforce strict limit for free tier API usage
+        self.max_results = min(max_results, 3)
         self.logger = logging.getLogger("tools.paper_search")
 
         # API key is optional for Semantic Scholar
@@ -216,8 +217,13 @@ class PaperSearchTool:
             Filtered and formatted list of papers
         """
         papers = []
+        count = 0
         
         for paper in results:
+            # Enforce strict limit - stop iterating once we have enough
+            if count >= self.max_results:
+                break
+                
             # Skip papers without basic metadata
             if not paper or not hasattr(paper, 'title'):
                 continue
@@ -225,22 +231,23 @@ class PaperSearchTool:
             paper_dict = {
                 "paper_id": paper.paperId if hasattr(paper, 'paperId') else None,
                 "title": paper.title if hasattr(paper, 'title') else "Unknown",
-                "authors": [{"name": a.name} for a in paper.authors] if hasattr(paper, 'authors') and paper.authors else [],
+                "authors": [{"name": a.name} for a in paper.authors][:2] if hasattr(paper, 'authors') and paper.authors else [],  # Limit authors
                 "year": paper.year if hasattr(paper, 'year') else None,
-                "abstract": paper.abstract if hasattr(paper, 'abstract') else "",
+                "abstract": (paper.abstract[:50] + "..." if len(paper.abstract) > 50 else paper.abstract) if hasattr(paper, 'abstract') and paper.abstract else "",  # Truncate abstract early
                 "citation_count": paper.citationCount if hasattr(paper, 'citationCount') else 0,
                 "url": paper.url if hasattr(paper, 'url') else "",
-                "venue": paper.venue if hasattr(paper, 'venue') else "",
-                "pdf_url": paper.openAccessPdf.get("url") if hasattr(paper, 'openAccessPdf') and paper.openAccessPdf else None,
+                "venue": "",  # Skip venue to save tokens
+                "pdf_url": None,  # Skip PDF URL to save tokens
             }
             
             papers.append(paper_dict)
+            count += 1
         
-        # Apply filters
+        # Apply filters (but still respect max_results)
         papers = self._filter_by_year(papers, year_from, year_to)
         papers = self._filter_by_citations(papers, min_citations)
         
-        return papers
+        return papers[:self.max_results]
 
     def _filter_by_year(
         self,
@@ -266,44 +273,37 @@ class PaperSearchTool:
 
 
 # Synchronous wrapper for use with AutoGen tools
-def paper_search(query: str, max_results: int = 10, year_from: Optional[int] = None) -> str:
+def paper_search(query: str, max_results: int = 3, year_from: Optional[int] = None) -> str:
     """
     Synchronous wrapper for paper search (for AutoGen tool integration).
     
     Args:
         query: Search query
-        max_results: Maximum results to return
+        max_results: Maximum results to return (default 3 for minimal API usage)
         year_from: Only return papers from this year onwards
         
     Returns:
-        Formatted string with paper results
+        Formatted string with paper results (minimal output to stay within token limits)
     """
+    # Strictly limit max_results to prevent token overflow (Groq free tier limit: 6000 tokens)
+    max_results = min(max_results, 3)
     tool = PaperSearchTool(max_results=max_results)
     results = asyncio.run(tool.search(query, year_from=year_from))
     
     if not results:
         return "No academic papers found."
     
-    # Format results as readable text
-    output = f"Found {len(results)} academic papers for '{query}':\n\n"
+    # Format results as minimal readable text
+    output = f"Found {len(results)} papers:\n"
     
     for i, paper in enumerate(results, 1):
-        authors = ", ".join([a["name"] for a in paper["authors"][:3]])
-        if len(paper["authors"]) > 3:
+        authors = ", ".join([a["name"] for a in paper["authors"][:2]])
+        if len(paper["authors"]) > 2:
             authors += " et al."
             
-        output += f"{i}. {paper['title']}\n"
-        output += f"   Authors: {authors}\n"
-        output += f"   Year: {paper['year']} | Citations: {paper['citation_count']}"
-        if paper.get('venue'):
-            output += f" | Venue: {paper['venue']}"
-        output += "\n"
-        
+        output += f"{i}. {paper['title']} ({paper['year']})\n"
+        output += f"   {authors}\n"
         if paper.get('abstract'):
-            abstract = paper['abstract'][:200] + "..." if len(paper['abstract']) > 200 else paper['abstract']
-            output += f"   Abstract: {abstract}\n"
-            
-        output += f"   URL: {paper['url']}\n"
-        output += "\n"
+            output += f"   {paper['abstract']}\n"
     
     return output

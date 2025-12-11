@@ -63,29 +63,30 @@ agents:
 
 models:
   # Default model for agents (Groq)
+  # Using llama-3.1-8b-instant for better tool calling support on free tier
   default:
-    provider: "vllm"
-    name: "openai/gpt-oss-20b"
+    provider: "groq"
+    name: "llama-3.1-8b-instant"
     temperature: 0.7
-    max_tokens: 2048
+    max_tokens: 1024
 
   # Judge model for evaluation
   judge:
-    provider: "vllm"
-    name: "openai/gpt-oss-20b"
+    provider: "groq"
+    name: "llama-3.1-8b-instant"
     temperature: 0.3
-    max_tokens: 1024
+    max_tokens: 512
 
 tools:
   web_search:
     enabled: true
     provider: "tavily"  # or "brave"
-    max_results: 5
+    max_results: 2  # Minimal for testing
 
   paper_search:
     enabled: true
     provider: "semantic_scholar"
-    max_results: 10
+    max_results: 3  # Minimal for testing
 
   citation_extraction:
     enabled: true
@@ -109,7 +110,7 @@ safety:
 
 evaluation:
   enabled: true
-  num_test_queries: 10
+  num_test_queries: 5  # Assignment requires 5+ diverse queries
 
   # Judge criteria
   criteria:
